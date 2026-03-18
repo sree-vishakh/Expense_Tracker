@@ -78,13 +78,16 @@ def add_expense():
 
         expense_id_var = cursor.var(oracledb.NUMBER)
 
+        from datetime import datetime
+        txn_date = datetime.strptime(data["txn_date"], "%Y-%m-%d")
+
         cursor.callproc("add_et_expense", [
             data["user_id"],
             data["category_id"],
             data["description"],
             data["amount"],
             data["txn_type"],
-            data["txn_date"],
+            txn_date,
             expense_id_var
         ])
 

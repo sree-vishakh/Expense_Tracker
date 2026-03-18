@@ -5,6 +5,7 @@ def get_connection():
     conn = oracledb.connect(
         user     = DB_USER,
         password = DB_PASSWORD,
-        dsn      = f"{DB_HOST}:{DB_PORT}/{DB_SERVICE}"
+        dsn      = f"{DB_HOST}:{DB_PORT}/{DB_SERVICE}",
+        mode     = oracledb.AUTH_MODE_SYSDBA
     )
     return conn
