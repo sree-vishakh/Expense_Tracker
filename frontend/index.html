@@ -580,68 +580,121 @@
 </div>
 
 <script>
-const CAT_COLORS = {
-  Food:          '#e67e22',
-  Transport:     '#2980b9',
-  Shopping:      '#8e5fd4',
-  Health:        '#27ae60',
-  Entertainment: '#e91e63',
-  Utilities:     '#16a085',
-  Salary:        '#2ecc71',
-  Freelance:     '#f1c40f',
-  Investment:    '#1abc9c',
-  Other:         '#7f8c8d',
-};
+const API = 'http://127.0.0.1:5000/api';
+const USER_ID = 1;
 
-let transactions = JSON.parse(localStorage.getItem('ledger_txs') || '[]');
+let transactions = [];
 let filter = 'all';
 let viewDate = new Date();
 viewDate.setDate(1);
 
-function save() {
-  localStorage.setItem('ledger_txs', JSON.stringify(transactions));
+// ─── API FUNCTIONS ───────────────────────────────────
+
+async function fetchExpenses() {
+  const year  = viewDate.getFullYear();
+  const month = viewDate.getMonth() + 1;
+  try {
+    const res  = await fetch(`${API}/expenses?user_id=${USER_ID}&year=${year}&month=${month}`);
+    transactions = await res.json();
+    render();
+  } catch(e) {
+    console.error('Failed to fetch expenses:', e);
+  }
 }
 
+async function addExpenseAPI(desc, amount, categoryName, type) {
+  try {
+    // First get categories to find category_id
+    const catRes = await fetch(`${API}/categories?user_id=${USER_ID}`);
+    const cats   = await catRes.json();
+    const cat    = cats.find(c => c.category_name === categoryName);
+    if (!cat) return alert('Category not found');
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const res = await fetch(`${API}/expenses`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id:     USER_ID,
+        category_id: cat.category_id,
+        description: desc,
+        amount:      amount,
+        txn_type:    type.toUpperCase(),
+        txn_date:    today
+      })
+    });
+
+    const data = await res.json();
+    if (data.error) return alert('Error: ' + data.error);
+    await fetchExpenses();
+
+  } catch(e) {
+    console.error('Failed to add expense:', e);
+  }
+}
+
+async function deleteExpenseAPI(expenseId) {
+  try {
+    await fetch(`${API}/expenses/${expenseId}?user_id=${USER_ID}`, {
+      method: 'DELETE'
+    });
+    await fetchExpenses();
+  } catch(e) {
+    console.error('Failed to delete expense:', e);
+  }
+}
+
+// ─── FORMATTING ──────────────────────────────────────
+
 function fmt(n) {
-  return '₹' + Math.abs(n).toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 2});
+  return '₹' + Math.abs(n).toLocaleString('en-IN', {
+    minimumFractionDigits: 0, maximumFractionDigits: 2
+  });
 }
 
 function monthKey(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
 }
 
-function currentMonthTxs() {
-  const key = monthKey(viewDate);
-  return transactions.filter(t => t.month === key);
-}
+// ─── RENDER ──────────────────────────────────────────
 
 function updateHeader() {
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  document.getElementById('monthDisplay').textContent = months[viewDate.getMonth()] + ' ' + viewDate.getFullYear();
-  const now = new Date();
+  const months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  document.getElementById('monthDisplay').textContent =
+    months[viewDate.getMonth()] + ' ' + viewDate.getFullYear();
+  const now  = new Date();
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  document.getElementById('todayDate').textContent = days[now.getDay()] + ', ' + now.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  document.getElementById('todayDate').textContent =
+    days[now.getDay()] + ', ' + now.toLocaleDateString('en-IN',{
+      day:'numeric', month:'short', year:'numeric'
+    });
 }
 
 function updateSummary() {
-  const txs = currentMonthTxs();
-  const income = txs.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
-  const expense = txs.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0);
-  const net = income - expense;
-  document.getElementById('totalIncome').textContent = fmt(income);
+  const income  = transactions.filter(t=>t.txn_type==='INCOME') .reduce((a,t)=>a+t.amount,0);
+  const expense = transactions.filter(t=>t.txn_type==='EXPENSE').reduce((a,t)=>a+t.amount,0);
+  const net     = income - expense;
+
+  document.getElementById('totalIncome') .textContent = fmt(income);
   document.getElementById('totalExpense').textContent = fmt(expense);
-  document.getElementById('netBalance').textContent = (net < 0 ? '−' : '') + fmt(net);
-  document.getElementById('netBalance').style.color = net < 0 ? '#e07070' : (net > 0 ? '#7fe0bb' : 'var(--paper)');
-  document.getElementById('incomeCount').textContent = txs.filter(t=>t.type==='income').length + ' transactions';
-  document.getElementById('expenseCount').textContent = txs.filter(t=>t.type==='expense').length + ' transactions';
-  document.getElementById('balanceNote').textContent = net >= 0 ? 'Surplus this month' : 'Deficit this month';
+  document.getElementById('netBalance')  .textContent = (net < 0 ? '−' : '') + fmt(net);
+  document.getElementById('netBalance')  .style.color =
+    net < 0 ? '#e07070' : (net > 0 ? '#7fe0bb' : 'var(--paper)');
+  document.getElementById('incomeCount') .textContent =
+    transactions.filter(t=>t.txn_type==='INCOME').length  + ' transactions';
+  document.getElementById('expenseCount').textContent =
+    transactions.filter(t=>t.txn_type==='EXPENSE').length + ' transactions';
+  document.getElementById('balanceNote') .textContent =
+    net >= 0 ? 'Surplus this month' : 'Deficit this month';
 }
 
 function updateList() {
   const list = document.getElementById('txList');
-  let txs = currentMonthTxs();
-  if (filter !== 'all') txs = txs.filter(t => t.type === filter);
-  txs = [...txs].sort((a,b) => new Date(b.date) - new Date(a.date));
+  let txs = [...transactions];
+  if (filter === 'income')  txs = txs.filter(t => t.txn_type === 'INCOME');
+  if (filter === 'expense') txs = txs.filter(t => t.txn_type === 'EXPENSE');
 
   if (!txs.length) {
     list.innerHTML = `<div class="empty-state"><span class="big">∅</span>No transactions found</div>`;
@@ -649,40 +702,48 @@ function updateList() {
   }
 
   list.innerHTML = txs.map(t => {
-    const col = CAT_COLORS[t.category] || '#888';
-    const badgeBg = col + '22';
-    const d = new Date(t.date);
-    const dateStr = d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+    const col      = t.color_code || '#888';
+    const badgeBg  = col + '22';
+    const d        = new Date(t.txn_date);
+    const dateStr  = d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+    const typeClass = t.txn_type === 'INCOME' ? 'income' : 'expense';
     return `
-    <div class="tx-row" data-id="${t.id}">
+    <div class="tx-row">
       <div class="tx-desc">
-        <span class="tx-name">${escHtml(t.desc)}</span>
+        <span class="tx-name">${t.description}</span>
         <span class="tx-date">${dateStr}</span>
       </div>
       <div class="tx-cat">
-        <span class="cat-badge" style="background:${badgeBg};color:${col}">${t.category}</span>
+        <span class="cat-badge" style="background:${badgeBg};color:${col}">
+          ${t.category_name}
+        </span>
       </div>
-      <div class="tx-type ${t.type}">${t.type}</div>
-      <div class="tx-amount ${t.type}">${t.type==='expense'?'−':'+'} ${fmt(t.amount)}</div>
-      <button class="tx-del" data-id="${t.id}" title="Delete">×</button>
+      <div class="tx-type ${typeClass}">${t.txn_type.toLowerCase()}</div>
+      <div class="tx-amount ${typeClass}">
+        ${t.txn_type==='EXPENSE'?'−':'+'} ${fmt(t.amount)}
+      </div>
+      <button class="tx-del" data-id="${t.expense_id}" title="Delete">×</button>
     </div>`;
   }).join('');
 }
 
 function updateChart() {
-  const txs = currentMonthTxs().filter(t => t.type === 'expense');
+  const txs  = transactions.filter(t => t.txn_type === 'EXPENSE');
   const cats = {};
-  txs.forEach(t => { cats[t.category] = (cats[t.category]||0) + t.amount; });
+  txs.forEach(t => { cats[t.category_name] = (cats[t.category_name]||0) + t.amount; });
   const sorted = Object.entries(cats).sort((a,b) => b[1]-a[1]);
-  const max = sorted[0]?.[1] || 1;
-  const wrap = document.getElementById('chartBars');
+  const max    = sorted[0]?.[1] || 1;
+  const wrap   = document.getElementById('chartBars');
+
   if (!sorted.length) {
-    wrap.innerHTML = `<div style="color:var(--dim);font-family:'DM Mono',monospace;font-size:12px;padding:20px 0">No expense data for this month</div>`;
+    wrap.innerHTML = `<div style="color:var(--dim);font-family:'DM Mono',monospace;
+      font-size:12px;padding:20px 0">No expense data for this month</div>`;
     return;
   }
+
   wrap.innerHTML = sorted.map(([cat, amt]) => {
     const pct = (amt/max*100).toFixed(1);
-    const col = CAT_COLORS[cat] || '#888';
+    const col = '#888';
     return `
     <div class="chart-row">
       <div class="chart-cat-label">${cat}</div>
@@ -703,54 +764,39 @@ function render() {
   updateChart();
 }
 
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+// ─── EVENT LISTENERS ─────────────────────────────────
 
-// Add transaction
-document.getElementById('addBtn').addEventListener('click', () => {
-  const desc = document.getElementById('desc').value.trim();
-  const amount = parseFloat(document.getElementById('amount').value);
+document.getElementById('addBtn').addEventListener('click', async () => {
+  const desc     = document.getElementById('desc').value.trim();
+  const amount   = parseFloat(document.getElementById('amount').value);
   const category = document.getElementById('category').value;
-  const type = document.getElementById('type').value;
+  const type     = document.getElementById('type').value;
+
   if (!desc || isNaN(amount) || amount <= 0) {
-    document.getElementById('desc').style.borderColor = '#c0392b';
+    document.getElementById('desc').style.borderColor   = '#c0392b';
     document.getElementById('amount').style.borderColor = '#c0392b';
     setTimeout(()=>{
-      document.getElementById('desc').style.borderColor='';
-      document.getElementById('amount').style.borderColor='';
-    },1000);
+      document.getElementById('desc').style.borderColor   = '';
+      document.getElementById('amount').style.borderColor = '';
+    }, 1000);
     return;
   }
-  const now = new Date();
-  transactions.push({
-    id: Date.now(),
-    desc, amount, category, type,
-    date: now.toISOString(),
-    month: monthKey(now),
-  });
-  save();
-  document.getElementById('desc').value = '';
+
+  await addExpenseAPI(desc, amount, category, type);
+  document.getElementById('desc').value   = '';
   document.getElementById('amount').value = '';
-  render();
 });
 
-// Enter key
 document.getElementById('amount').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('addBtn').click();
 });
 
-// Delete
-document.getElementById('txList').addEventListener('click', e => {
+document.getElementById('txList').addEventListener('click', async e => {
   const btn = e.target.closest('.tx-del');
   if (!btn) return;
-  const id = parseInt(btn.dataset.id);
-  transactions = transactions.filter(t => t.id !== id);
-  save();
-  render();
+  await deleteExpenseAPI(parseInt(btn.dataset.id));
 });
 
-// Filter
 document.querySelectorAll('.filter-pill').forEach(pill => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
@@ -760,41 +806,18 @@ document.querySelectorAll('.filter-pill').forEach(pill => {
   });
 });
 
-// Month nav
 document.getElementById('prevMonth').addEventListener('click', () => {
   viewDate.setMonth(viewDate.getMonth()-1);
-  render();
+  fetchExpenses();
 });
+
 document.getElementById('nextMonth').addEventListener('click', () => {
   viewDate.setMonth(viewDate.getMonth()+1);
-  render();
+  fetchExpenses();
 });
 
-// Seed demo data if empty
-if (!transactions.length) {
-  const now = new Date();
-  const mk = monthKey(now);
-  const days = [1,3,5,7,10,12,15,17,18,20];
-  const demos = [
-    {desc:'Monthly Salary',amount:85000,category:'Salary',type:'income'},
-    {desc:'Reliance Fresh groceries',amount:3200,category:'Food',type:'expense'},
-    {desc:'Ola ride to office',amount:280,category:'Transport',type:'expense'},
-    {desc:'Amazon order — books',amount:1850,category:'Shopping',type:'expense'},
-    {desc:'Netflix subscription',amount:649,category:'Entertainment',type:'expense'},
-    {desc:'Electricity bill',amount:1800,category:'Utilities',type:'expense'},
-    {desc:'Freelance project',amount:22000,category:'Freelance',type:'income'},
-    {desc:'Swiggy dinner',amount:640,category:'Food',type:'expense'},
-    {desc:'Doctor consultation',amount:500,category:'Health',type:'expense'},
-    {desc:'Mutual fund SIP',amount:10000,category:'Investment',type:'income'},
-  ];
-  demos.forEach((d,i) => {
-    const date = new Date(now.getFullYear(), now.getMonth(), days[i]||now.getDate());
-    transactions.push({id: Date.now()+i, ...d, date: date.toISOString(), month: mk});
-  });
-  save();
-}
-
-render();
+// ─── INIT ────────────────────────────────────────────
+fetchExpenses();
 </script>
 </body>
 </html>
