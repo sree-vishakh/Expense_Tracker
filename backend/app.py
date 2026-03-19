@@ -6,6 +6,10 @@ import oracledb
 app = Flask(__name__)
 CORS(app)
 
+@app.after_request
+def add_ngrok_header(response):
+    response.headers['ngrok-skip-browser-warning'] = 'true'
+    return response
 # ─────────────────────────────────────────
 # GET /api/expenses?user_id=1&year=2025&month=3
 # ─────────────────────────────────────────
