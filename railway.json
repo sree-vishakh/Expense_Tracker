@@ -1,10 +1,9 @@
 {
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "pip install -r backend/requirements.txt"
+    "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd backend && python app.py",
+    "startCommand": "python app.py",
     "restartPolicyType": "ON_FAILURE"
   }
 }
